@@ -235,7 +235,11 @@ public class WebSocket {
      */
     public void sendMessageByTopic(String topic, SocketMessage message) {
         Set<Session> sessions = topicSessionMap.get(topic);
-        sessions.stream().forEach(item -> {
+        if (CollectionUtils.isEmpty(sessions)) {
+            log.info("该Topic:{},不存在订阅者,无法发送", topic);
+            return;
+        }
+        sessions.forEach(item -> {
             item.getAsyncRemote().sendText(JSONObject.toJSONString(message));
         });
     }

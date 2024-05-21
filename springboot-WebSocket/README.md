@@ -13,12 +13,14 @@ WebSocket使用方式有很多，这里主要展示常用的两种：
 1. 点对点式，通过userId进行消息的收发
 2. 订阅式，通过topic进行消息订阅、取消订阅、消息群发
 
+本文Github源代码：https://github.com/xunfeng224/Springboot/tree/main/springboot-WebSocket
+
 ## 引入
 > WebSocket 是一种基于 TCP 协议的全双工通信协议，它允许客户端和服务器之间建立持久的、双向的通信连接。相比传统的 HTTP 请求 - 响应模式，WebSocket 提供了实时、低延迟的数据传输能力。通过 WebSocket，客户端和服务器可以在任意时间点互相发送消息，实现实时更新和即时通信的功能。WebSocket 协议经过了多个浏览器和服务器的支持，成为了现代 Web 应用中常用的通信协议之一。它广泛应用于聊天应用、实时数据更新、多人游戏等场景，为 Web 应用提供了更好的用户体验和更高效的数据传输方式。
 
 ## 项目结构
 
-
+![image-20240521170037936](C:\Users\hf\AppData\Roaming\Typora\typora-user-images\image-20240521170037936.png)
 
 
 
@@ -161,12 +163,12 @@ public class WebSocket {
             return;
         }
         try {
-            SocketResult socketResult = JSONObject.parseObject(message, SocketResult.class);
-            if (null == socketResult.getHeader() || null == socketResult.getHeader().getMessageType()) {
+            SocketMessage socketMessage = JSONObject.parseObject(message, SocketMessage.class);
+            if (null == socketMessage.getHeader() || null == socketMessage.getHeader().getMessageType()) {
                 return;
             }
-            String messageType = socketResult.getHeader().getMessageType();
-            String topic = socketResult.getHeader().getTopic();
+            String messageType = socketMessage.getHeader().getMessageType();
+            String topic = socketMessage.getHeader().getTopic();
             if (SUBSCRIBE.equals(messageType)) {
                 //按照Topic订阅
                 subscribeTopic(topic, session);
@@ -284,12 +286,16 @@ public class WebSocket {
      * 以Topic订阅形式进行消息推送
      *
      * @param topic
-     * @param socketResult
+     * @param message
      */
-    public void sendMessageByTopic(String topic, SocketResult socketResult) {
+    public void sendMessageByTopic(String topic, SocketMessage message) {
         Set<Session> sessions = topicSessionMap.get(topic);
-        sessions.stream().forEach(item -> {
-            item.getAsyncRemote().sendText(JSONObject.toJSONString(socketResult));
+        if (CollectionUtils.isEmpty(sessions)) {
+            log.info("该Topic:{},不存在订阅者,无法发送", topic);
+            return;
+        }
+        sessions.forEach(item -> {
+            item.getAsyncRemote().sendText(JSONObject.toJSONString(message));
         });
     }
 }
@@ -404,5 +410,71 @@ public class SocketMessage {
 
 
 
+## WebSocket调试
+
+### 创建调试类
+
+```java
+package com.xunfeng.example.controller;
 
 
+import com.xunfeng.example.websocket.SocketMessage;
+import com.xunfeng.example.websocket.WebSocket;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * 测试接口
+ */
+@RestController
+@RequestMapping("/websocketTest")
+public class WebSocketController {
+
+    @Autowired
+    private WebSocket webSocket;
+
+    /**
+     * 通过Topic发送信息
+     *
+     * @param topic
+     * @param body
+     */
+    @GetMapping("/topic/sendMessage")
+    public void sendMessageByTopic(String topic, String body) {
+        SocketMessage message = new SocketMessage();
+        SocketMessage.Header header = new SocketMessage.Header();
+        header.setMessageType("type1");
+        header.setTopic(topic);
+        message.setHeader(header);
+        message.setBody(body);
+        webSocket.sendMessageByTopic(topic, message);
+    }
+
+    /**
+     * 通过UserId发送信息
+     *
+     * @param userId
+     * @param message
+     */
+    @GetMapping("/userId/sendMessage")
+    public void sendMessageByUserId(String userId, String message) {
+        webSocket.sendOneMessage(userId, message);
+    }
+}
+```
+
+
+
+## 使用接口调试工具进行调试
+
+本地启动SpringBoot服务后，选择支持WebSocket的接口调试工具即可，推荐Postman、Apifox等
+
+为方便大家学习，其中WebSocketController类中接口已生成接口文件，见源码中:WebSocket.openapi.json，直接导入接口调试工具或在IDEA中使用即可
+
+WebSocket调试暂不支持生成openapi文件，可自行搜索postman调试WebSocket关键词进行调试
+
+
+
+![image-20240521165731392](C:\Users\hf\AppData\Roaming\Typora\typora-user-images\image-20240521165731392.png)
