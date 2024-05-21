@@ -13,7 +13,12 @@ WebSocket使用方式有很多，这里主要展示常用的两种：
 1. 点对点式，通过userId进行消息的收发
 2. 订阅式，通过topic进行消息订阅、取消订阅、消息群发
 
-本文Github源代码：https://github.com/xunfeng224/Springboot/tree/main/springboot-WebSocket
+本文源码：
+
+- Github源代码地址：https://github.com/xunfeng224/Springboot/tree/main/springboot-WebSocket
+- Gitee源代码地址：https://gitee.com/xfeng520/Springboot/tree/main/springboot-WebSocket
+
+
 
 ## 引入
 > WebSocket 是一种基于 TCP 协议的全双工通信协议，它允许客户端和服务器之间建立持久的、双向的通信连接。相比传统的 HTTP 请求 - 响应模式，WebSocket 提供了实时、低延迟的数据传输能力。通过 WebSocket，客户端和服务器可以在任意时间点互相发送消息，实现实时更新和即时通信的功能。WebSocket 协议经过了多个浏览器和服务器的支持，成为了现代 Web 应用中常用的通信协议之一。它广泛应用于聊天应用、实时数据更新、多人游戏等场景，为 Web 应用提供了更好的用户体验和更高效的数据传输方式。
