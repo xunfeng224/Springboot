@@ -1,5 +1,6 @@
 package com.xunfeng.example.controller;
 
+import com.baomidou.dynamic.datasource.annotation.DS;
 import com.baomidou.dynamic.datasource.toolkit.DynamicDataSourceContextHolder;
 import com.xunfeng.example.domain.entity.SysUser;
 import com.xunfeng.example.mapper.SysUserMapper;
@@ -21,6 +22,14 @@ public class UserController {
 
     @GetMapping("/{dsId}/{userId}")
     public String getUser(@PathVariable("dsId") String dsId, @PathVariable("userId") Long userId) {
+        DynamicDataSourceContextHolder.push(dsId.toString());
+        SysUser sysUser = sysUserMapper.selectById(userId);
+        return sysUser.toString();
+    }
+
+    @GetMapping("/{userId}")
+    @DS("master")
+    public String getUserDS(@PathVariable("dsId") String dsId, @PathVariable("userId") Long userId) {
         DynamicDataSourceContextHolder.push(dsId.toString());
         SysUser sysUser = sysUserMapper.selectById(userId);
         return sysUser.toString();

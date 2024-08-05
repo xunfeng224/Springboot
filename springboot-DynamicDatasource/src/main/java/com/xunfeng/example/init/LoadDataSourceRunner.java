@@ -40,6 +40,7 @@ public class LoadDataSourceRunner implements CommandLineRunner {
                 Connection connection = null;
                 try {
                     connection = dataSource.getConnection();
+                    // 本质上是个Map，采用key-value形式存储数据源，后续获取数据源需要key
                     dynamicRoutingDataSource.addDataSource(ds.getId().toString(), dataSource);
                 } catch (SQLException e) {
                     System.out.println(e.getMessage());
