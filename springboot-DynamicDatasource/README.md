@@ -20,7 +20,186 @@ DynamicDatasource[项目地址](https://github.com/baomidou/dynamic-datasource)�
 Github源代码地址：https://github.com/xunfeng224/Springboot/tree/main/springboot-DynamicDatasource
 Gitee源代码地址：
 
-## 快速开始
+
+
+## 源码分析
+
+### ThreadLocal和AbstractRoutingDataSource
+
+`ThreadLocal`：全称：`thread local variable`。主要是为解决多线程时由于并发而产生数据不一致问题。ThreadLocal为每个线程提供变量副本，确保每个线程在某一时间访问到的不是同一个对象，这样做到了隔离性，增加了内存，但大大减少了线程同步时的性能消耗，减少了线程并发控制的复杂程度。
+
+- ThreadLocal作用：在一个线程中共享，不同线程间隔离
+- ThreadLocal原理：ThreadLocal存入值时，会获取当前线程实例作为key，存入当前线程对象中的Map中。
+
+`AbstractRoutingDataSource`：根据用户定义的规则选择当前的数据源，
+
+Spring boot提供了AbstractRoutingDataSource 根据用户定义的规则选择当前的数据源，这样我们可以在执行查询之前，设置使用的数据源。实现可动态路由的数据源，在每次数据库查询操作前执行。它的抽象方法 determineCurrentLookupKey() 决定使用哪个数据源。
+
+### DynamicRoutingDataSource
+
+该类继承上述提到的`AbstractRoutingDataSource`抽象类，实现`determineDataSource()`方法，如上文所述，该方法决定了当前数据库操作所使用的数据源
+
+```java
+public class DynamicRoutingDataSource extends AbstractRoutingDataSource implements InitializingBean, DisposableBean {
+ //...省略...   
+     /**
+     * 通过各种方式加载的数据源将存储在该Map中，后续动态切换也是从这里获取
+     */
+    private final Map<String, DataSource> dataSourceMap = new ConcurrentHashMap<>();
+        /**
+     * 分组数据库
+     */
+    private final Map<String, GroupDataSource> groupDataSources = new ConcurrentHashMap<>();
+    /**
+    获取主数据源
+    */
+    @Override
+    protected String getPrimary() {
+        return primary;
+    }
+
+    @Override
+    public DataSource determineDataSource() {
+        // 数据源key/数据源名称从DynamicDataSourceContextHolder.peek()中获取
+        String dsKey = DynamicDataSourceContextHolder.peek();
+        return getDataSource(dsKey);
+    }
+    
+      /**
+     * 获取数据源
+     *
+     * @param ds 数据源名称
+     * @return 数据源
+     */
+    public DataSource getDataSource(String ds) {
+        if (DsStrUtils.isEmpty(ds)) {
+            // 这里数据源名称为空，调用方法获取主数据源
+            return determinePrimaryDataSource();
+        } else if (!groupDataSources.isEmpty() && groupDataSources.containsKey(ds)) {
+            log.debug("dynamic-datasource switch to the datasource named [{}]", ds);
+            return groupDataSources.get(ds).determineDataSource();
+        } else if (dataSourceMap.containsKey(ds)) {
+            log.debug("dynamic-datasource switch to the datasource named [{}]", ds);
+            return dataSourceMap.get(ds);
+        }
+        if (strict) {
+            throw new CannotFindDataSourceException("dynamic-datasource could not find a datasource named " + ds);
+        }
+        return determinePrimaryDataSource();
+    }
+    
+        /**
+     * 添加数据源
+     *
+     * @param ds         数据源名称
+     * @param dataSource 数据源
+     */
+    public synchronized void addDataSource(String ds, DataSource dataSource) {
+        DataSource oldDataSource = dataSourceMap.put(ds, dataSource);
+        // 新数据源添加到分组
+        this.addGroupDataSource(ds, dataSource);
+        // 关闭老的数据源
+        if (oldDataSource != null) {
+            closeDataSource(ds, oldDataSource, graceDestroy);
+        }
+        log.info("dynamic-datasource - add a datasource named [{}] success", ds);
+    }
+ //...省略...  
+    
+}
+```
+
+
+
+`DynamicDataSourceContextHolder`类 ，源码自带注解也挺详细的了，不做多解释
+
+```java
+import org.springframework.core.NamedThreadLocal;
+
+import java.util.ArrayDeque;
+import java.util.Deque;
+
+/**
+ * 核心基于ThreadLocal的切换数据源工具类
+ *
+ * @author TaoYu Kanyuxia
+ * @since 1.0.0
+ */
+public final class DynamicDataSourceContextHolder {
+
+    /**
+     * 为什么要用链表存储(准确的是栈)
+     * <pre>
+     * 为了支持嵌套切换，如ABC三个service都是不同的数据源
+     * 其中A的某个业务要调B的方法，B的方法需要调用C的方法。一级一级调用切换，形成了链。
+     * 传统的只设置当前线程的方式不能满足此业务需求，必须使用栈，后进先出。
+     * </pre>
+     */
+    private static final ThreadLocal<Deque<String>> LOOKUP_KEY_HOLDER = new NamedThreadLocal<Deque<String>>("dynamic-datasource") {
+        @Override
+        protected Deque<String> initialValue() {
+            return new ArrayDeque<>();
+        }
+    };
+
+    private DynamicDataSourceContextHolder() {
+    }
+
+    /**
+     * 获得当前线程数据源
+     *
+     * @return 数据源名称
+     */
+    public static String peek() {
+        return LOOKUP_KEY_HOLDER.get().peek();
+    }
+
+    /**
+     * 设置当前线程数据源
+     * <p>
+     * 如非必要不要手动调用，调用后确保最终清除
+     * </p>
+     *
+     * @param ds 数据源名称
+     * @return 数据源名称
+     */
+    public static String push(String ds) {
+        String dataSourceStr = DsStrUtils.isEmpty(ds) ? "" : ds;
+        LOOKUP_KEY_HOLDER.get().push(dataSourceStr);
+        return dataSourceStr;
+    }
+
+    /**
+     * 清空当前线程数据源
+     * <p>
+     * 如果当前线程是连续切换数据源 只会移除掉当前线程的数据源名称
+     * </p>
+     */
+    public static void poll() {
+        Deque<String> deque = LOOKUP_KEY_HOLDER.get();
+        deque.poll();
+        if (deque.isEmpty()) {
+            LOOKUP_KEY_HOLDER.remove();
+        }
+    }
+
+    /**
+     * 强制清空本地线程
+     * <p>
+     * 防止内存泄漏，如手动调用了push可调用此方法确保清除
+     * </p>
+     */
+    public static void clear() {
+        LOOKUP_KEY_HOLDER.remove();
+    }
+}
+```
+
+
+
+
+
+## DynamicDatasource快速开始
 
 其实也没啥好写的，DynamicDatasource功能很丰富，但本文章只涉及到简单的操作。流程为新建Springboot项目，引入Maven依赖，配置yml中的master数据源，使用mybatis-plus快速实现查询主数据源sys_user表数据，通过defaultDataSourceCreator.createDataSource(dataSourceProperty)创建数据源，通过dynamicRoutingDataSource.addDataSource(ds.getId().toString(), dataSource);添加数据源，通过DynamicDataSourceContextHolder.push(dsId.toString());切换数据源或通过注解@DS("master")切换
 
@@ -303,3 +482,224 @@ public class UserController {
 }
 ```
 
+## 手动实现
+
+模仿DynamicDatasource手动实现简单动态数据源，如果不需要dynamicDatasource那么复杂的功能，可以考虑手动实现。
+
+核心类`DataSourceContextHolder`
+
+```java
+package com.xunfeng.example.dynamic;
+
+/**
+ * @author 
+ * @date 2024/6/17 14:20
+ */
+public class DataSourceContextHolder {
+    /**
+     * 此类提供线程局部变量。这些变量不同于它们的正常对应关系是每个线程访问一个线程(通过get、set方法),有自己的独立初始化变量的副本。
+     */
+    private static final ThreadLocal<String> DATASOURCE_HOLDER = new ThreadLocal<>();
+
+    /**
+     * 设置数据源
+     *
+     * @param dataSourceName 数据源名称
+     */
+    public static void setDataSource(String dataSourceName) {
+        DATASOURCE_HOLDER.set(dataSourceName);
+    }
+
+    /**
+     * 获取当前线程的数据源
+     *
+     * @return 数据源名称
+     */
+    public static String getDataSource() {
+        return DATASOURCE_HOLDER.get();
+    }
+
+    /**
+     * 删除当前数据源
+     */
+    public static void removeDataSource() {
+        DATASOURCE_HOLDER.remove();
+    }
+
+}
+
+```
+
+核心类`DynamicDataSource`
+
+```java
+package com.xunfeng.example.dynamic;
+
+import com.alibaba.druid.pool.DruidDataSource;
+import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
+import com.xunfeng.example.domain.entity.DataSourceEntity;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
+import org.springframework.jdbc.datasource.lookup.AbstractRoutingDataSource;
+
+import javax.sql.DataSource;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * @author 
+ * @date 2024/6/17 14:19
+ */
+@Slf4j
+public class DynamicDataSource extends AbstractRoutingDataSource {
+    private final static Map<Object, Object> targetDataSourceMap = new HashMap<>();
+
+    public DynamicDataSource(DataSource defaultDataSource, Map<Object, Object> targetDataSources) {
+        super.setDefaultTargetDataSource(defaultDataSource);
+        super.setTargetDataSources(targetDataSources);
+        targetDataSourceMap.put("master", defaultDataSource);
+//        targetDataSourceMap = targetDataSources;
+    }
+
+    @Override
+    protected Object determineCurrentLookupKey() {
+        String dataSource = DataSourceContextHolder.getDataSource();
+        DataSourceContextHolder.removeDataSource();
+        return dataSource;
+    }
+
+    /**
+     * 添加数据源信息
+     *
+     * @param dataSources 数据源实体集合
+     * @return 返回添加结果
+     */
+    public Boolean createDataSource(List<DataSourceEntity> dataSources) {
+        if (CollectionUtils.isNotEmpty(dataSources)) {
+            for (DataSourceEntity ds : dataSources) {
+                try {
+                    //校验数据库是否可以连接
+                    Class.forName(ds.getDriverClassName());
+                    DriverManager.getConnection(ds.getUrl(), ds.getUsername(), ds.getPassword());
+                    //定义数据源
+                    DruidDataSource dataSource = new DruidDataSource();
+                    BeanUtils.copyProperties(ds, dataSource);
+                    //申请连接时执行validationQuery检测连接是否有效，这里建议配置为TRUE，防止取到的连接不可用
+                    dataSource.setTestOnBorrow(true);
+                    //建议配置为true，不影响性能，并且保证安全性。
+                    //申请连接的时候检测，如果空闲时间大于timeBetweenEvictionRunsMillis，执行validationQuery检测连接是否有效。
+                    dataSource.setTestWhileIdle(true);
+                    //用来检测连接是否有效的sql，要求是一个查询语句。
+                    dataSource.setValidationQuery("select 1 ");
+                    dataSource.init();
+                    this.targetDataSourceMap.put(ds.getId(), dataSource);
+                } catch (ClassNotFoundException | SQLException e) {
+                    log.error("---数据源初始化错误---:{}", e.getMessage());
+                }
+            }
+            super.setTargetDataSources(targetDataSourceMap);
+            // 将TargetDataSources中的连接信息放入resolvedDataSources管理
+            super.afterPropertiesSet();
+            return Boolean.TRUE;
+        }
+
+        return Boolean.FALSE;
+    }
+
+    /**
+     * 校验数据源是否存在
+     *
+     * @param key 数据源保存的key
+     * @return 返回结果，true：存在，false：不存在
+     */
+    public static boolean existsDataSource(Long key) {
+        return Objects.nonNull(targetDataSourceMap.get(key));
+    }
+
+    public static Map<Object, Object> getTargetDataSourceMap() {
+        return targetDataSourceMap;
+    }
+
+}
+```
+
+核心类`DynamicDataSourceConfig`，这里主要功能为注册主数据源，也可以在这里注册更多的其他数据源
+
+```java
+package com.xunfeng.example.dynamic;
+
+import com.alibaba.druid.spring.boot.autoconfigure.DruidDataSourceBuilder;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
+
+import javax.sql.DataSource;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * @author 
+ * @date 2024/6/17 14:54
+ */
+@Configuration
+public class DynamicDataSourceConfig {
+    @Bean
+    @ConfigurationProperties("spring.datasource.dynamic.datasource.master")
+    public DataSource masterDataSource(){
+        return DruidDataSourceBuilder.create().build();
+    }
+    @Bean(name = "anotherDynamicDataSource")
+    @Primary
+    public DynamicDataSource dataSource() {
+        Map<Object,Object> dataSourceMap = new HashMap<>();
+        DataSource defaultDataSource = masterDataSource();
+        dataSourceMap.put("master",defaultDataSource);
+        return new DynamicDataSource(defaultDataSource,dataSourceMap);
+    }
+}
+```
+
+服务启动加载数据源类`AnotherLoadDataSourceRunner`
+
+```java
+package com.xunfeng.example.dynamic.init;
+
+import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
+
+import com.xunfeng.example.domain.entity.DataSourceEntity;
+import com.xunfeng.example.dynamic.DynamicDataSource;
+import com.xunfeng.example.mapper.DataSourceMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.stereotype.Component;
+
+import javax.annotation.Resource;
+import java.util.List;
+
+/**
+ * @author 
+ * @date 2024/6/17 14:31
+ */
+@Component
+public class AnotherLoadDataSourceRunner implements CommandLineRunner {
+    @Autowired
+    private DataSourceMapper dataSourceMapper;
+    @Resource(name = "anotherDynamicDataSource")
+    private DynamicDataSource anotherDynamicDataSource;
+
+    @Override
+    public void run(String... args) throws Exception {
+        List<DataSourceEntity> list = dataSourceMapper.selectList(null);
+        if (CollectionUtils.isNotEmpty(list)) {
+            anotherDynamicDataSource.createDataSource(list);
+        }
+    }
+}
+```
+
+自定义数据源切换注解
