@@ -3,6 +3,8 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/Springboot.iml" filepath="$PROJECT_DIR$/.idea/Springboot.iml" />
+      <module fileurl="file://$PROJECT_DIR$/springboot-DynamicDatasource/springboot-DynamicDatasource.iml" filepath="$PROJECT_DIR$/springboot-DynamicDatasource/springboot-DynamicDatasource.iml" />
+      <module fileurl="file://$PROJECT_DIR$/springboot-WebSocket/springboot-WebSocket.iml" filepath="$PROJECT_DIR$/springboot-WebSocket/springboot-WebSocket.iml" />
     </modules>
   </component>
 </project>

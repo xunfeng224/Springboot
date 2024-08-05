@@ -5,6 +5,7 @@
     <option name="originalFiles">
       <list>
         <option value="$PROJECT_DIR$/springboot-WebSocket/pom.xml" />
+        <option value="$PROJECT_DIR$/springboot-DynamicDatasource/pom.xml" />
       </list>
     </option>
     <option name="workspaceImportForciblyTurnedOn" value="true" />

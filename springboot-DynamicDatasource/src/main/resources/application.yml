@@ -1,0 +1,19 @@
+# 应用服务 WEB 访问端口
+server:
+  port: 8080
+spring:
+  datasource:
+    dynamic:
+      primary: master
+      datasource:
+        master:
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          url: jdbc:mysql://${DB_HOST:127.0.0.1}:3306/test?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8&allowMultiQueries=true
+          username: ${DB_USER:root}
+          password: ${DB_PASSWORD:root}
+          type: com.alibaba.druid.pool.DruidDataSource
+      druid:
+        max-wait: 3000
+        connection-error-retry-attempts: 3
+        # 失败后break退出循环，若为false，当getConnection失败时会无限重试
+        break-after-acquire-failure: true
