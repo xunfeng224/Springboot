@@ -18,9 +18,32 @@ DynamicDatasource[项目地址](https://github.com/baomidou/dynamic-datasource)�
 
 本文Demo完整源码：
 Github源代码地址：https://github.com/xunfeng224/Springboot/tree/main/springboot-DynamicDatasource
-Gitee源代码地址：
+Gitee源代码地址：https://gitee.com/xfeng520/Springboot/tree/main/springboot-DynamicDatasource
 
-
+> [!CAUTION]
+>
+> 运行源码需注意，由于加入了手动实现的动态数据源，会导致Bean冲突，若想运行DynamicDataSource，将手动代码dynamic包直接删除，若想运行手动实现的动态数据源，将`LoadDataSourceRunner`类全部注释掉，避免找不到Bean报错。手动动态数据源相关代码全部位于dynamic包下。
+>
+> 原因：自定义数据源管理类`DynamicDataSource`继承了Spring的`AbstractRoutingDataSource`类，而在DynamicDataSou源码中，`DynamicRoutingDataSource`类同样继承了 `AbstractRoutingDataSource`   ,本来想通过自定义Bean注入名称来解决Bean冲突，发现不可行。在`DynamicDataSourceAutoConfiguration`中注册`DynamicRoutingDataSource`的bean时，加入了`@ConditionalOnMissingBean`注解，这将导致有自定义实现类bean注入Spring容器时，`DynamicRoutingDataSource`无法注入Spring容器，从而启动报错。
+>
+> @ConditionalOnMissingBean作用：判断当前需要注入Spring容器中的bean的实现类是否已经含有，有的话不注入，没有就注入
+>
+> ```java
+>     @Bean
+>     @ConditionalOnMissingBean
+>     public DataSource dataSource(List<DynamicDataSourceProvider> providers) {
+>         DynamicRoutingDataSource dataSource = new DynamicRoutingDataSource(providers);
+>         dataSource.setPrimary(this.properties.getPrimary());
+>         dataSource.setStrict(this.properties.getStrict());
+>         dataSource.setStrategy(this.properties.getStrategy());
+>         dataSource.setP6spy(this.properties.getP6spy());
+>         dataSource.setSeata(this.properties.getSeata());
+>         dataSource.setGraceDestroy(this.properties.getGraceDestroy());
+>         return dataSource;
+>     }
+> ```
+>
+> 
 
 ## 源码分析
 
@@ -205,7 +228,7 @@ public final class DynamicDataSourceContextHolder {
 
 ### 项目结构
 
-![image-20240805160459616](C:\Users\hf\AppData\Roaming\Typora\typora-user-images\image-20240805160459616.png)
+![image-20240806101011218](C:\Users\hf\AppData\Roaming\Typora\typora-user-images\image-20240806101011218.png)
 
 ### Maven依赖
 
@@ -486,7 +509,7 @@ public class UserController {
 
 模仿DynamicDatasource手动实现简单动态数据源，如果不需要dynamicDatasource那么复杂的功能，可以考虑手动实现。
 
-核心类`DataSourceContextHolder`
+### 核心类`DataSourceContextHolder`
 
 ```java
 package com.xunfeng.example.dynamic;
@@ -530,7 +553,7 @@ public class DataSourceContextHolder {
 
 ```
 
-核心类`DynamicDataSource`
+### 核心类`DynamicDataSource`
 
 ```java
 package com.xunfeng.example.dynamic;
@@ -627,7 +650,9 @@ public class DynamicDataSource extends AbstractRoutingDataSource {
 }
 ```
 
-核心类`DynamicDataSourceConfig`，这里主要功能为注册主数据源，也可以在这里注册更多的其他数据源
+### 核心类`DynamicDataSourceConfig`
+
+这里主要功能为注册主数据源，也可以在这里注册更多的其他数据源
 
 ```java
 package com.xunfeng.example.dynamic;
@@ -664,7 +689,7 @@ public class DynamicDataSourceConfig {
 }
 ```
 
-服务启动加载数据源类`AnotherLoadDataSourceRunner`
+### 服务启动加载数据源类`AnotherLoadDataSourceRunner`
 
 ```java
 package com.xunfeng.example.dynamic.init;
@@ -702,4 +727,95 @@ public class AnotherLoadDataSourceRunner implements CommandLineRunner {
 }
 ```
 
-自定义数据源切换注解
+### 自定义数据源切换注解`DataSource`
+
+```java
+package com.xunfeng.example.dynamic.annotation;
+
+import java.lang.annotation.*;
+
+/**
+ * @author 
+ * @date 2024/6/17 15:17
+ */
+@Target({ElementType.METHOD,ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Inherited
+public @interface DataSource {
+    String value() default "master";
+}
+```
+
+
+
+### 切面`DSAspect`
+
+```java
+package com.xunfeng.example.dynamic.aspect;
+
+
+import com.baomidou.mybatisplus.core.toolkit.StringUtils;
+import com.xunfeng.example.domain.entity.DataSourceEntity;
+import com.xunfeng.example.dynamic.DataSourceContextHolder;
+import com.xunfeng.example.dynamic.annotation.DataSource;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Pointcut;
+import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.stereotype.Component;
+
+import java.lang.reflect.Method;
+import java.util.Objects;
+
+/**
+ * @author 
+ * @date 2024/6/17 15:18
+ */
+@Aspect
+@Component
+public class DSAspect {
+
+    @Pointcut("@annotation(com.xunfeng.example.dynamic.annotation.DataSource)")
+    public void datasourcePoint() {
+    }
+
+    @Around("datasourcePoint()")
+    public Object datasourceAround(ProceedingJoinPoint point) throws Throwable {
+        MethodSignature signature = (MethodSignature) point.getSignature();
+        Method method = signature.getMethod();
+        DataSource dataSource = method.getAnnotation(DataSource.class);
+        if (Objects.nonNull(dataSource)) {
+            // 数据源key
+            String key = null;
+            // 1.从入参中获取数据源key，并切换
+            Object[] args = point.getArgs();
+            for (Object arg : args) {
+                // 自定义入参标准，这里简单用id作为key
+                if (arg instanceof DataSourceEntity) {
+                    DataSourceEntity req = (DataSourceEntity) arg;
+                    key = req.getId().toString();
+                }
+            }
+            // 2.获取注解中的value为数据源key
+            if (StringUtils.isEmpty(key)) {
+                key = dataSource.value();
+            }
+            // 实时切换默认数据源
+            DataSourceContextHolder.setDataSource(key);
+
+
+        }
+        try {
+            return point.proceed();
+        } finally {
+            DataSourceContextHolder.removeDataSource();
+        }
+    }
+}
+
+```
+
+
+
