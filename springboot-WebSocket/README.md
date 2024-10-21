@@ -38,7 +38,7 @@ WebSocket使用方式有很多，这里主要展示常用的两种：
 ```xml
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
 ```
 
