@@ -1,0 +1,63 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.xunfeng.example</groupId>
+  <artifactId>springboot-JustAuth</artifactId>
+  <version>1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <name>springboot-JustAuth</name>
+  <url>http://maven.apache.org</url>
+
+  <properties>
+      <java.version>1.8</java.version>
+      <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+      <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+      <spring-boot.version>2.6.13</spring-boot.version>
+  </properties>
+
+  <dependencies>
+      <dependency>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-starter-web</artifactId>
+      </dependency>
+      <dependency>
+          <groupId>cn.hutool</groupId>
+          <artifactId>hutool-http</artifactId>
+          <version>5.7.7</version>
+      </dependency>
+      <dependency>
+          <groupId>com.squareup.okhttp3</groupId>
+          <artifactId>okhttp</artifactId>
+          <version>4.9.1</version>
+      </dependency>
+<!--      <dependency>-->
+<!--          <groupId>me.zhyd.oauth</groupId>-->
+<!--          <artifactId>JustAuth</artifactId>-->
+<!--          <version>1.16.7</version>-->
+<!--&lt;!&ndash;          <version>{latest-version}</version>&ndash;&gt;-->
+<!--      </dependency>-->
+      <dependency>
+          <groupId>com.xkcoding.justauth</groupId>
+          <artifactId>justauth-spring-boot-starter</artifactId>
+          <version>1.4.0</version>
+      </dependency>
+      <dependency>
+          <groupId>org.projectlombok</groupId>
+          <artifactId>lombok</artifactId>
+          <scope>provided</scope>
+      </dependency>
+  </dependencies>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>
